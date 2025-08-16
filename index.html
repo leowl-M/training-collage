@@ -1,17 +1,49 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <title>Mask Playground</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="styles.css" />
+
+  <!-- p5.js -->
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.2/lib/p5.min.js" defer></script>
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Sidebar toggle + Theme toggle -->
+  <script defer>
+    document.addEventListener('DOMContentLoaded', () => {
+      const sidebar = document.getElementById('sidebar');
+      document.getElementById('menuToggle')?.addEventListener('click', () => {
+        sidebar?.classList.toggle('open');
+        document.body.classList.toggle('no-scroll');
+      });
+
+      const btnTheme = document.getElementById('themeToggle');
+      const saved = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(saved || (prefersDark ? 'dark' : 'light'));
+      btnTheme?.addEventListener('click', () => {
+        setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+      });
+
+      function setTheme(t){
+        document.documentElement.setAttribute('data-theme', t);
+        localStorage.setItem('theme', t);
+      }
+    });
+  </script>
+
   <script src="sketch.js" defer></script>
 </head>
 <body>
+  <!-- Topbar -->
   <header class="topbar">
-    <button id="menuToggle" aria-label="Apri/Chiudi pannello">☰</button>
+    <button id="menuToggle" class="btn" aria-label="Apri/Chiudi pannello">☰</button>
     <h1>Mask Playground</h1>
+    <div class="topbar-right">
+      <button id="themeToggle" class="btn" aria-label="Cambia tema" title="Cambia tema">🌓</button>
+    </div>
   </header>
 
   <div id="app">
@@ -23,7 +55,7 @@
         <summary>File</summary>
         <div class="section">
           <div class="row">
-            <label class="label">Immagini</label>
+            <label class="label" for="fileInput">Immagini</label>
             <input id="fileInput" type="file" accept="image/*" multiple />
             <button id="clearBtn" class="primary">Svuota</button>
           </div>
@@ -35,23 +67,28 @@
         <summary>Rendering</summary>
         <div class="section">
           <div class="row">
-            <label class="label">Modalità</label>
+            <label class="label" for="mode">Modalità</label>
             <select id="mode">
               <option value="overlay">Overlay</option>
               <option value="slideshow">Slideshow</option>
             </select>
-            <label class="label">FPS</label>
+
+            <label class="label" for="fps">FPS</label>
             <input id="fps" type="range" min="1" max="60" value="2" />
+            <output id="fpsVal">2</output>
           </div>
+
           <div class="row">
-            <label class="label">Blend</label>
+            <label class="label" for="blend">Blend</label>
             <select id="blend">
               <option>BLEND</option><option>ADD</option><option>MULTIPLY</option>
               <option>SCREEN</option><option>DARKEST</option><option>LIGHTEST</option>
               <option>DIFFERENCE</option><option>EXCLUSION</option>
             </select>
-            <label class="label">Opacità</label>
+
+            <label class="label" for="opacity">Opacità</label>
             <input id="opacity" type="range" min="10" max="100" value="100" />
+            <output id="opacityVal">100</output>
           </div>
         </div>
       </details>
@@ -60,7 +97,7 @@
         <summary>Maschera</summary>
         <div class="section">
           <div class="row">
-            <label class="label">Tipo</label>
+            <label class="label" for="maskType">Tipo</label>
             <select id="maskType">
               <option value="noise">Noise</option>
               <option value="noise-radial">Noise Radial</option>
@@ -72,29 +109,39 @@
               <option value="rect-random">Rect Random</option>
             </select>
           </div>
+
           <div class="row">
-            <label class="label">Punti</label>
+            <label class="label" for="points">Punti</label>
             <input id="points" type="range" min="3" max="50" value="12" />
+            <output id="pointsVal">12</output>
           </div>
+
           <div class="row">
-            <label class="label">Size</label>
+            <label class="label" for="size">Size</label>
             <input id="size" type="range" min="5" max="100" value="32" />
+            <output id="sizeVal">32</output>
           </div>
+
           <div class="row">
-            <label class="label">Feather</label>
+            <label class="label" for="feather">Feather</label>
             <input id="feather" type="range" min="0" max="20" value="0" />
+            <output id="featherVal">0</output>
           </div>
+
           <div class="row">
-            <label class="label">Random Offset</label>
+            <label class="label" for="randomOffset">Random Offset</label>
             <input id="randomOffset" type="range" min="0" max="1" step="0.01" value="0" />
+            <output id="randomOffsetVal">0</output>
           </div>
+
           <div class="row">
             <label><input id="invert" type="checkbox" /> Inverti</label>
             <label><input id="perFrame" type="checkbox" checked /> Per Frame</label>
             <label><input id="perImage" type="checkbox" checked /> Per Image</label>
           </div>
+
           <div class="row">
-            <button id="randomizeBtn">Rigenera (Spazio)</button>
+            <button id="randomizeBtn">Rigenera</button>
           </div>
         </div>
       </details>
@@ -103,8 +150,17 @@
         <summary>Slideshow</summary>
         <div class="section">
           <div class="row">
-            <label class="label">Shuffle</label>
+            <label class="label" for="shuffle">Shuffle</label>
             <input id="shuffle" type="checkbox" />
+          </div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Export</summary>
+        <div class="section">
+          <div class="row">
+            <button id="saveBtn" class="primary">Salva PNG</button>
           </div>
         </div>
       </details>
@@ -112,10 +168,14 @@
 
     <main id="stage">
       <div id="stageToolbar">
-        <div class="left"><button id="saveBtn" class="primary">Salva PNG</button></div>
-        <div class="right">Spazio: rigenera • S: salva • R: per frame • ←/→ slideshow</div>
+        <div class="left"></div>
+        <div class="right">
+          <span id="infoCount">0 immagini</span>
+          <span>•</span>
+          <span id="infoFps">FPS: —</span>
+        </div>
       </div>
-      <div id="canvasWrap"></div>
+      <div id="canvasWrap" aria-label="Area canvas 4:5"></div>
     </main>
   </div>
 

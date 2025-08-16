@@ -1,4 +1,5 @@
-// ==== Stato / Parametri ====
+// Mask Playground — canvas 4:5 robusto + stato empty
+
 let cnv, pg;
 let images = [];
 
@@ -16,88 +17,115 @@ const params = {
   invert: false,
   shuffle: false,
   bg: '#000000',
-  randomOffset: 0.0 // 0 = centro fisso, 1 = random pieno
+  randomOffset: 0.0
 };
 
 let maskSeed = 0;
 let slideIndex = 0;
 
-// ==== Helpers DOM ====
+// DOM helpers
 const $ = id => document.getElementById(id);
 const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); return el; };
 
-// ==== Misure (4:5) - basate sul wrapper ====
+// UI sync
+function updateCounterUI(){
+  const n = images.length;
+  const txt = `${n} immagine${n === 1 ? '' : 'i'}`;
+  const a = $('#counter');   if (a) a.textContent = txt;
+  const b = $('#infoCount'); if (b) b.textContent = txt;
+}
+function updateFPSUI(p5inst){
+  const el = $('#infoFps'); if (!el) return;
+  if (!updateFPSUI._last || performance.now() - updateFPSUI._last > 250){
+    el.textContent = `FPS: ${Math.round(p5inst.frameRate())}`;
+    updateFPSUI._last = performance.now();
+  }
+}
+function setWrapEmptyState(isEmpty){
+  const w = $('#canvasWrap');
+  if (w) w.classList.toggle('empty', !!isEmpty);
+}
+
+// Misure (4:5) + retry layout
 function fitRectInBox(aspect, boxW, boxH) {
   let w = Math.floor(boxW);
   let h = Math.floor(w / aspect);
   if (h > boxH) { h = Math.floor(boxH); w = Math.floor(h * aspect); }
-  w = Math.max(200, w);
-  h = Math.max(200, h);
+  w = Math.max(200, w); h = Math.max(200, h);
   return { w, h };
 }
-function sizeFromWrap() {
-  const wrap = document.getElementById('canvasWrap');
-  const rect = wrap?.getBoundingClientRect();
-  const boxW = Math.max(0, Math.floor(rect?.width  ?? 400));
-  const boxH = Math.max(0, Math.floor(rect?.height ?? 300));
-  return fitRectInBox(4 / 5, boxW, boxH);
+function sizeFromWrapMaybe() {
+  const wrap = $('#canvasWrap');
+  if (!wrap) return null;
+  const rect = wrap.getBoundingClientRect();
+  const boxW = Math.floor(rect.width);
+  const boxH = Math.floor(rect.height);
+  if (boxW <= 0 || boxH <= 0) return null;
+  return fitRectInBox(4/5, boxW, boxH);
 }
-
-function hardResizeToWrap() {
-  const { w, h } = sizeFromWrap();
-  if (w !== width || h !== height) {
-    resizeCanvas(w, h, true);
-    if (pg) pg.remove();
-    pg = createGraphics(w, h);
-    pg.pixelDensity(1);
+function ensureSizedCanvas(retries = 24) {
+  const sz = sizeFromWrapMaybe();
+  if (sz) {
+    if (width !== sz.w || height !== sz.h) {
+      resizeCanvas(sz.w, sz.h, true);
+      if (pg) pg.remove();
+      pg = createGraphics(sz.w, sz.h);
+      pg.pixelDensity(1);
+    }
+    redraw();
+    return;
   }
-  redraw();
+  if (retries > 0) setTimeout(() => ensureSizedCanvas(retries - 1), 80);
 }
+function hardResizeToWrap(){ ensureSizedCanvas(1); } // alias compat
 
-// ==== p5 lifecycle ====
+// p5 lifecycle
 function setup() {
-  const { w, h } = sizeFromWrap();
-  cnv = createCanvas(w, h);
+  // fallback visibile 800×1000
+  cnv = createCanvas(800, 1000);
   cnv.parent('canvasWrap');
 
   pixelDensity(1);
-  pg = createGraphics(w, h);
+  pg = createGraphics(width, height);
   pg.pixelDensity(1);
 
   frameRate(params.fps);
-
   cnv.drop(gotFile);
+
   bindUI();
   reflectUIFromParams();
+  updateCounterUI();
 
-  // Resize: osserva wrapper, sidebar e <details>
+  // ridimensiona quando il layout è pronto
+  ensureSizedCanvas();
+
+  // observers
   const wrapEl = $('#canvasWrap');
-  if (wrapEl) {
-    const ro = new ResizeObserver(() => hardResizeToWrap());
-    ro.observe(wrapEl);
-  }
+  if (wrapEl) new ResizeObserver(() => ensureSizedCanvas()).observe(wrapEl);
   const sidebar = $('#sidebar');
-  if (sidebar) {
-    const mo = new ResizeObserver(() => hardResizeToWrap());
-    mo.observe(sidebar);
-  }
+  if (sidebar) new ResizeObserver(() => ensureSizedCanvas()).observe(sidebar);
   document.querySelectorAll('#sidebar details').forEach(d => {
-    d.addEventListener('toggle', () => setTimeout(hardResizeToWrap, 60));
+    d.addEventListener('toggle', () => setTimeout(ensureSizedCanvas, 60));
   });
   const tgl = $('#menuToggle');
   if (tgl) tgl.addEventListener('click', () => {
     $('#sidebar')?.classList.toggle('open');
-    setTimeout(hardResizeToWrap, 260);
+    setTimeout(ensureSizedCanvas, 260);
   });
-  window.addEventListener('resize', hardResizeToWrap);
-  setTimeout(hardResizeToWrap, 80);
+  window.addEventListener('resize', ensureSizedCanvas);
+
+  loopIfNeeded();
+  noSmooth();
 }
 
 function draw() {
   background(params.bg);
 
+  // stato "vuoto" per CSS
+  setWrapEmptyState(images.length === 0);
+
   if (images.length === 0) {
-    drawEmptyHint();
+    updateFPSUI(this);
     return;
   }
 
@@ -107,15 +135,16 @@ function draw() {
                                   : (slideIndex + 1) % images.length;
     }
     drawOne(images[slideIndex], 0);
-    return;
+  } else {
+    for (let k = 0; k < images.length; k++) {
+      drawOne(images[k], params.perImage ? k : 0);
+    }
   }
 
-  for (let k = 0; k < images.length; k++) {
-    drawOne(images[k], params.perImage ? k : 0);
-  }
+  updateFPSUI(this);
 }
 
-// ==== Disegno frame ====
+// Disegno frame
 function drawOne(img, offset) {
   if (!img) return;
   const displayImg = img.get();
@@ -134,7 +163,7 @@ function drawOne(img, offset) {
   pop();
 }
 
-// ==== centro random helper (da centro verso random) ====
+// Centro random
 function randomCenter() {
   if (params.randomOffset <= 0) return [width/2, height/2];
   const maxOffsetX = (width  / 2) * params.randomOffset;
@@ -144,7 +173,7 @@ function randomCenter() {
   return [width/2 + dx, height/2 + dy];
 }
 
-// ==== Maschere ====
+// Maschere
 function generateMask(seed) {
   randomSeed(seed);
   noiseSeed(seed);
@@ -154,13 +183,10 @@ function generateMask(seed) {
   pg.noStroke();
 
   switch (params.maskType) {
-    // --- noise + varianti ---
     case 'noise':         drawNoiseMask(); break;
     case 'noise-radial':  drawNoiseRadialMask(); break;
     case 'noise-multi':   drawNoiseMultiMask(); break;
     case 'noise-ring':    drawNoiseRingMask(); break;
-
-    // --- organiche (opzionali) ---
     case 'organic-center':  drawOrganicCenter(); break;
     case 'organic-scatter':
       drawOrganicScatter();
@@ -168,37 +194,30 @@ function generateMask(seed) {
       break;
     case 'organic-cloud':   drawOrganicCloud(); break;
     case 'rect-random':     drawRectRandom(); break;
-
-    default:
-      drawNoiseMask();
+    default: drawNoiseMask();
   }
 
   if (params.feather > 0) pg.filter(BLUR, params.feather);
 }
 
-// ---- Noise (originale) ----
+// Noise base
 function drawNoiseMask() {
   const mag = Math.min(width, height) * (params.size / 100);
   const pts = Math.max(3, params.points);
   const [cx, cy] = randomCenter();
-  pg.push();
-  pg.translate(cx, cy);
+  pg.push(); pg.translate(cx, cy);
   pg.beginShape();
-  for (let i = 0; i < pts; i++) {
-    pg.curveVertex(random(-mag, mag), random(-mag, mag));
-  }
+  for (let i = 0; i < pts; i++) pg.curveVertex(random(-mag, mag), random(-mag, mag));
   pg.endShape(CLOSE);
   pg.pop();
 }
-
-// ---- Noise (Radial) ----
+// Noise radial
 function drawNoiseRadialMask() {
   const base = Math.min(width, height) * (params.size / 100);
   const pts = Math.max(6, params.points);
   const nScale = 0.6;
   const [cx, cy] = randomCenter();
-  pg.push();
-  pg.translate(cx, cy);
+  pg.push(); pg.translate(cx, cy);
   pg.beginShape();
   for (let i = 0; i < pts; i++) {
     const a = (TWO_PI / pts) * i;
@@ -213,17 +232,14 @@ function drawNoiseRadialMask() {
   pg.endShape(CLOSE);
   pg.pop();
 }
-
-// ---- Noise (Multi) ----
+// Noise multi
 function drawNoiseMultiMask() {
   const blobs = Math.round(map(params.size, 10, 100, 2, 6));
   const pts = Math.max(6, params.points);
   for (let b = 0; b < blobs; b++) {
-    const [cx, cy] = randomCenter(); // ogni blob con offset dal centro
+    const [cx, cy] = randomCenter();
     const base = Math.min(width, height) * (params.size / 100) * random(0.6, 1.2);
-    pg.push();
-    pg.translate(cx, cy);
-    pg.beginShape();
+    pg.push(); pg.translate(cx, cy); pg.beginShape();
     for (let i = 0; i < pts; i++) {
       const a = (TWO_PI / pts) * i;
       const r = base * (0.6 + noise(b * 10 + i * 0.5) * 0.9);
@@ -234,21 +250,16 @@ function drawNoiseMultiMask() {
       const r = base * (0.6 + noise(b * 10 + i * 0.5) * 0.9);
       pg.curveVertex(cos(a) * r, sin(a) * r);
     }
-    pg.endShape(CLOSE);
-    pg.pop();
+    pg.endShape(CLOSE); pg.pop();
   }
 }
-
-// ---- Noise (Ring) ----
+// Noise ring
 function drawNoiseRingMask() {
   const base = Math.min(width, height) * (params.size / 100);
   const pts = Math.max(6, params.points);
   const [cx, cy] = randomCenter();
+  pg.push(); pg.translate(cx, cy);
 
-  pg.push();
-  pg.translate(cx, cy);
-
-  // Blob esterno
   pg.beginShape();
   for (let i = 0; i < pts; i++) {
     const a = (TWO_PI / pts) * i;
@@ -262,7 +273,6 @@ function drawNoiseRingMask() {
   }
   pg.endShape(CLOSE);
 
-  // foro interno
   pg.fill(0);
   const innerBase = base * 0.55;
   const innerPts = Math.max(6, Math.round(params.points * 0.8));
@@ -277,20 +287,16 @@ function drawNoiseRingMask() {
     const r = innerBase * (0.8 + noise(100 + i * 0.7) * 0.7);
     pg.curveVertex(cos(a) * r, sin(a) * r);
   }
-  pg.endShape(CLOSE);
-  pg.pop();
+  pg.endShape(CLOSE); pg.pop();
 
   if (!params.invert) pg.fill(255); else pg.fill(0);
 }
-
-// ---- Organiche (facoltative) ----
+// Organiche
 function drawOrganicCenter() {
   const base = Math.min(width, height) * (params.size / 100);
   const pts = Math.max(3, params.points);
   const jitter = 0.45;
-  pg.push();
-  pg.translate(width / 2, height / 2);
-  pg.beginShape();
+  pg.push(); pg.translate(width / 2, height / 2); pg.beginShape();
   for (let i = 0; i < pts; i++) {
     const a = (TWO_PI / pts) * i;
     const r = base * (1 - jitter + random(jitter * 2));
@@ -301,10 +307,8 @@ function drawOrganicCenter() {
     const r = base * (1 - jitter + random(jitter * 2));
     pg.curveVertex(cos(a) * r, sin(a) * r);
   }
-  pg.endShape(CLOSE);
-  pg.pop();
+  pg.endShape(CLOSE); pg.pop();
 }
-
 function drawOrganicScatter() {
   const pts = Math.max(8, params.points + 4);
   pg.beginShape();
@@ -315,14 +319,12 @@ function drawOrganicScatter() {
   }
   pg.endShape(CLOSE);
 }
-
 function drawOrganicCloud() {
   const blobs = Math.round(map(params.size, 10, 100, 3, 12));
   const localPts = Math.max(5, Math.round(params.points * 0.75));
   const maxD = Math.min(width, height) * 0.35;
   for (let b = 0; b < blobs; b++) {
-    const cx = random(width);
-    const cy = random(height);
+    const cx = random(width), cy = random(height);
     const base = random(maxD * 0.25, maxD);
     pg.beginShape();
     for (let i = 0; i < localPts; i++) {
@@ -333,17 +335,13 @@ function drawOrganicCloud() {
     pg.endShape(CLOSE);
   }
 }
-
 function drawRectRandom() {
-  const x = random(width);
-  const y = random(height);
-  const w = random(width * 0.2, width);
-  const h = random(height * 0.2, height);
-  pg.rectMode(CENTER);
-  pg.rect(x, y, w, h);
+  const x = random(width), y = random(height);
+  const w = random(width * 0.2, width), h = random(height * 0.2, height);
+  pg.rectMode(CENTER); pg.rect(x, y, w, h);
 }
 
-// ==== Blend ====
+// Blend
 function applyBlend(name) {
   switch (name) {
     case 'ADD': blendMode(ADD); break;
@@ -357,65 +355,60 @@ function applyBlend(name) {
   }
 }
 
-// ==== UI ====
+// UI
 function bindUI() {
   on('fileInput','change', e => handleFiles(e.target.files));
-  on('clearBtn','click', () => { images = []; updateCounter(); redraw(); });
+  on('clearBtn','click', () => { images = []; updateCounterUI(); redraw(); });
 
-  on('mode','change', e => { params.mode = e.target.value; toggleSlideshowSection(); redraw(); });
-  on('fps','input', e => { params.fps = +e.target.value; frameRate(params.fps); redraw(); });
+  on('mode','change', e => { params.mode = e.target.value; toggleSlideshowSection(); loopIfNeeded(); redraw(); });
+  on('fps','input', e => { params.fps = +e.target.value; const o=$('#fpsVal'); if(o)o.textContent=String(params.fps); frameRate(params.fps); loopIfNeeded(); redraw(); });
   on('blend','change', e => { params.blend = e.target.value; redraw(); });
-  on('opacity','input', e => { params.opacity = +e.target.value; redraw(); });
+  on('opacity','input', e => { params.opacity = +e.target.value; const o=$('#opacityVal'); if(o)o.textContent=String(params.opacity); redraw(); });
 
   on('maskType','change', e => { params.maskType = e.target.value; redraw(); });
-  on('points','input', e => { params.points = +e.target.value; redraw(); });
-  on('size','input', e => { params.size = +e.target.value; redraw(); });
-  on('feather','input', e => { params.feather = +e.target.value; redraw(); });
+  on('points','input', e => { params.points = +e.target.value; const o=$('#pointsVal'); if(o)o.textContent=String(params.points); redraw(); });
+  on('size','input', e => { params.size = +e.target.value; const o=$('#sizeVal'); if(o)o.textContent=String(params.size); redraw(); });
+  on('feather','input', e => { params.feather = +e.target.value; const o=$('#featherVal'); if(o)o.textContent=String(params.feather); redraw(); });
   on('invert','change', e => { params.invert = e.target.checked; redraw(); });
-  on('perFrame','change', e => { params.perFrame = e.target.checked; redraw(); });
+  on('perFrame','change', e => { params.perFrame = e.target.checked; loopIfNeeded(); redraw(); });
   on('perImage','change', e => { params.perImage = e.target.checked; redraw(); });
-  on('randomizeBtn','click', () => { maskSeed = (maskSeed + 1) >>> 0; redraw(); });
+  on('randomizeBtn','click', () => { maskSeed = (maskSeed + 1) >>> 0; loopOnce(); });
 
   on('shuffle','change', e => { params.shuffle = e.target.checked; redraw(); });
 
-  // slider Random Offset
-  on('randomOffset','input', e => { params.randomOffset = parseFloat(e.target.value); redraw(); });
+  on('randomOffset','input', e => {
+    params.randomOffset = parseFloat(e.target.value);
+    const o=$('#randomOffsetVal'); if(o)o.textContent=String(params.randomOffset);
+    redraw();
+  });
 
   on('saveBtn','click', () => saveCanvas('frame','png'));
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 's' || e.key === 'S') saveCanvas('frame','png');
-    if (e.key === ' ') { e.preventDefault(); maskSeed = (maskSeed + 1) >>> 0; redraw(); }
-    if (e.key === 'r' || e.key === 'R') {
-      params.perFrame = !params.perFrame;
-      const el = $('#perFrame'); if (el) el.checked = params.perFrame;
-      redraw();
-    }
-    if (params.mode === 'slideshow' && images.length > 0) {
-      if (e.key === 'ArrowRight') slideIndex = (slideIndex + 1) % images.length;
-      if (e.key === 'ArrowLeft')  slideIndex = (slideIndex - 1 + images.length) % images.length;
-    }
-  });
-
   toggleSlideshowSection();
+
+  // Drag overlay UX (se presente)
+  const drop = $('#dropHint');
+  if (drop){
+    ['dragenter','dragover'].forEach(ev => window.addEventListener(ev, (e)=>{ e.preventDefault(); drop.style.display='grid'; }));
+    ['dragleave','drop'].forEach(ev => window.addEventListener(ev, (e)=>{ e.preventDefault(); drop.style.display='none'; }));
+  }
 }
 
 function reflectUIFromParams() {
   const reflect = (id, val, prop='value') => { const el = $(id); if (el) el[prop] = val; };
   reflect('maskType', params.maskType);
   reflect('mode', params.mode);
-  reflect('fps', params.fps);
+  reflect('fps', params.fps); const o1=$('#fpsVal'); if(o1)o1.textContent=String(params.fps);
   reflect('blend', params.blend);
-  reflect('opacity', params.opacity);
-  reflect('points', params.points);
-  reflect('size', params.size);
-  reflect('feather', params.feather);
+  reflect('opacity', params.opacity); const o2=$('#opacityVal'); if(o2)o2.textContent=String(params.opacity);
+  reflect('points', params.points); const o3=$('#pointsVal'); if(o3)o3.textContent=String(params.points);
+  reflect('size', params.size); const o4=$('#sizeVal'); if(o4)o4.textContent=String(params.size);
+  reflect('feather', params.feather); const o5=$('#featherVal'); if(o5)o5.textContent=String(params.feather);
   reflect('perFrame', params.perFrame, 'checked');
   reflect('perImage', params.perImage, 'checked');
   reflect('invert', params.invert, 'checked');
   reflect('shuffle', params.shuffle, 'checked');
-  reflect('bg', params.bg);
-  reflect('randomOffset', params.randomOffset);
+  reflect('randomOffset', params.randomOffset); const o6=$('#randomOffsetVal'); if(o6)o6.textContent=String(params.randomOffset);
 }
 
 function toggleSlideshowSection() {
@@ -423,37 +416,21 @@ function toggleSlideshowSection() {
   if (sec) sec.style.display = (params.mode === 'slideshow') ? 'block' : 'none';
 }
 
-// ==== UI extra / hint ====
-function drawEmptyHint() {
-  fill(200);
-  textAlign(CENTER, CENTER);
-  textSize(16);
-  text('Carica o trascina qui immagini (JPG/PNG)\n\nSpazio: rigenera • S: salva • R: per frame • ←/→ slideshow', width/2, height/2);
-}
+// loop gestione
+function loopIfNeeded(){ if (params.mode === 'slideshow' || params.perFrame) loop(); else noLoop(); }
+function loopOnce(){ if (!isLooping()) redraw(); }
 
-// ==== I/O immagini ====
-function updateCounter() {
-  const el = $('#counter');
-  if (el) el.textContent = `${images.length} immagine${images.length === 1 ? '' : 'i'}`;
-}
+// I/O immagini
 function gotFile(file) {
   if (file && file.type && file.type.startsWith('image')) {
-    loadImage(file.data, (img) => { 
-      images.push(img); 
-      updateCounter(); 
-      redraw();
-    });
+    loadImage(file.data, (img) => { images.push(img); updateCounterUI(); loopOnce(); });
   }
 }
 function handleFiles(fileList) {
   if (!fileList || fileList.length === 0) return;
   Array.from(fileList).filter(f => f.type.startsWith('image/')).forEach(f => {
     const reader = new FileReader();
-    reader.onload = e => loadImage(e.target.result, img => { 
-      images.push(img); 
-      updateCounter(); 
-      redraw();
-    });
+    reader.onload = e => loadImage(e.target.result, img => { images.push(img); updateCounterUI(); loopOnce(); });
     reader.readAsDataURL(f);
   });
 }
