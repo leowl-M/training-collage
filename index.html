@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Mask Playground</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.2/lib/p5.min.js" defer></script>
+  <script src="sketch.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <button id="menuToggle" aria-label="Apri/Chiudi pannello">☰</button>
+    <h1>Mask Playground</h1>
+  </header>
+
+  <div id="app">
+    <aside id="sidebar">
+      <h1>Controlli</h1>
+      <div class="sub">Carica immagini e gioca con maschere, blend e animazioni.</div>
+
+      <details open>
+        <summary>File</summary>
+        <div class="section">
+          <div class="row">
+            <label class="label">Immagini</label>
+            <input id="fileInput" type="file" accept="image/*" multiple />
+            <button id="clearBtn" class="primary">Svuota</button>
+          </div>
+          <div class="row"><span id="counter" class="sub">0 immagini</span></div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Rendering</summary>
+        <div class="section">
+          <div class="row">
+            <label class="label">Modalità</label>
+            <select id="mode">
+              <option value="overlay">Overlay</option>
+              <option value="slideshow">Slideshow</option>
+            </select>
+            <label class="label">FPS</label>
+            <input id="fps" type="range" min="1" max="60" value="2" />
+          </div>
+          <div class="row">
+            <label class="label">Blend</label>
+            <select id="blend">
+              <option>BLEND</option><option>ADD</option><option>MULTIPLY</option>
+              <option>SCREEN</option><option>DARKEST</option><option>LIGHTEST</option>
+              <option>DIFFERENCE</option><option>EXCLUSION</option>
+            </select>
+            <label class="label">Opacità</label>
+            <input id="opacity" type="range" min="10" max="100" value="100" />
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Maschera</summary>
+        <div class="section">
+          <div class="row">
+            <label class="label">Tipo</label>
+            <select id="maskType">
+              <option value="noise">Noise</option>
+              <option value="noise-radial">Noise Radial</option>
+              <option value="noise-multi">Noise Multi</option>
+              <option value="noise-ring">Noise Ring</option>
+              <option value="organic-center">Organic Center</option>
+              <option value="organic-scatter">Organic Scatter</option>
+              <option value="organic-cloud">Organic Cloud</option>
+              <option value="rect-random">Rect Random</option>
+            </select>
+          </div>
+          <div class="row">
+            <label class="label">Punti</label>
+            <input id="points" type="range" min="3" max="50" value="12" />
+          </div>
+          <div class="row">
+            <label class="label">Size</label>
+            <input id="size" type="range" min="5" max="100" value="32" />
+          </div>
+          <div class="row">
+            <label class="label">Feather</label>
+            <input id="feather" type="range" min="0" max="20" value="0" />
+          </div>
+          <div class="row">
+            <label class="label">Random Offset</label>
+            <input id="randomOffset" type="range" min="0" max="1" step="0.01" value="0" />
+          </div>
+          <div class="row">
+            <label><input id="invert" type="checkbox" /> Inverti</label>
+            <label><input id="perFrame" type="checkbox" checked /> Per Frame</label>
+            <label><input id="perImage" type="checkbox" checked /> Per Image</label>
+          </div>
+          <div class="row">
+            <button id="randomizeBtn">Rigenera (Spazio)</button>
+          </div>
+        </div>
+      </details>
+
+      <details id="slideshowSection" open>
+        <summary>Slideshow</summary>
+        <div class="section">
+          <div class="row">
+            <label class="label">Shuffle</label>
+            <input id="shuffle" type="checkbox" />
+          </div>
+        </div>
+      </details>
+    </aside>
+
+    <main id="stage">
+      <div id="stageToolbar">
+        <div class="left"><button id="saveBtn" class="primary">Salva PNG</button></div>
+        <div class="right">Spazio: rigenera • S: salva • R: per frame • ←/→ slideshow</div>
+      </div>
+      <div id="canvasWrap"></div>
+    </main>
+  </div>
+
+  <div id="dropHint">Trascina qui le immagini…</div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
